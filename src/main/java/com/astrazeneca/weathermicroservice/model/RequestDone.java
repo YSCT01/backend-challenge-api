@@ -1,4 +1,4 @@
-package com.astrazeneca.weathermicroservice.repositories;
+package com.astrazeneca.weathermicroservice.model;
 
 import java.time.LocalDateTime;
 import java.util.List;

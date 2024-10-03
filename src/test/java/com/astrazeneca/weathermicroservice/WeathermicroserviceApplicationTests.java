@@ -10,4 +10,5 @@ class WeathermicroserviceApplicationTests {
 	void contextLoads() {
 	}
 
+
 }

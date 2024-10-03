@@ -23,6 +23,7 @@ public class ApiService {
     @Value("${spotify-api-key}")
     private String spotifyApiKey;
 
+    @Value("${spotify-api-secret}")
     private String spotifyApiSecret;
 
     private final WebClient webClient;
