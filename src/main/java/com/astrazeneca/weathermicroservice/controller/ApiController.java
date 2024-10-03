@@ -13,6 +13,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.astrazeneca.weathermicroservice.service.ApiService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
 @RestController
 @RequestMapping("/api/weather")
 public class ApiController {
@@ -25,6 +31,19 @@ public class ApiController {
         return "Hello World!";
     }
 
+    @Operation(summary = "Get a playlist suggestion based on city name and current temperature",
+               description = "Fetches the current temperature for the given city and suggests a playlist based on predefined rules for different temperature ranges.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful operation", 
+                         content = {@Content(mediaType = "application/json",
+                         schema = @Schema(implementation = String.class))}),
+            @ApiResponse(responseCode = "400", description = "Invalid city name provided",
+                         content = @Content),
+            @ApiResponse(responseCode = "404", description = "City not found",
+                         content = @Content),
+            @ApiResponse(responseCode = "500", description = "Internal server error",
+                         content = @Content)
+    })
     @GetMapping("/playlist/city")
     public ResponseEntity<List<String>> getPlaylistByCity(@RequestParam String city){
         List<String> playlist = new ArrayList<String>();
@@ -33,6 +52,19 @@ public class ApiController {
         );
     }
 
+    @Operation(summary = "Get a playlist suggestion based on coordinates",
+           description = "Fetches the current temperature for the given latitude and longitude and suggests a playlist based on predefined rules for different temperature ranges.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful operation", 
+                        content = {@Content(mediaType = "application/json",
+                        schema = @Schema(implementation = String.class))}),
+            @ApiResponse(responseCode = "400", description = "Invalid coordinates provided",
+                        content = @Content),
+            @ApiResponse(responseCode = "404", description = "Location not found",
+                        content = @Content),
+            @ApiResponse(responseCode = "500", description = "Internal server error",
+                        content = @Content)
+    })
     @GetMapping("/playlist/coordinates")
     public ResponseEntity<List<String>> getPlaylistByCoordinates(@RequestParam double lat, @RequestParam double lon){
         List<String> playlist = new ArrayList<String>();
