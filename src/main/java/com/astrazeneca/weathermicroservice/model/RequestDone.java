@@ -3,9 +3,6 @@ package com.astrazeneca.weathermicroservice.model;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -63,9 +60,4 @@ public class RequestDone {
     public void setPlaylist(List<String> playlist) {
         this.playlist = playlist;
     }
-
-
-    //Repository Interface to persist data
-    @Repository
-    public interface RequestDoneRepository extends JpaRepository<RequestDone, Integer>{}
 }
