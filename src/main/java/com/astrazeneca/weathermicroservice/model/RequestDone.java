@@ -22,7 +22,6 @@ public class RequestDone {
     private double temperature;
     private LocalDateTime time;
     private List<String> playlist;
-    private int count;
 
     //Getters and Setters
     public int getId() {
@@ -63,14 +62,6 @@ public class RequestDone {
 
     public void setPlaylist(List<String> playlist) {
         this.playlist = playlist;
-    }
-
-    public int getCount() {
-        return this.count;
-    }
-
-    public void setCount(int count) {
-        this.count = count;
     }
 
 

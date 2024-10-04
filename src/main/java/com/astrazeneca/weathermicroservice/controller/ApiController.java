@@ -1,6 +1,5 @@
 package com.astrazeneca.weathermicroservice.controller;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,10 +45,24 @@ public class ApiController {
     })
     @GetMapping("/playlist/city")
     public ResponseEntity<List<String>> getPlaylistByCity(@RequestParam String city){
-        List<String> playlist = new ArrayList<String>();
-        return new ResponseEntity<>(playlist,
-            HttpStatus.OK
-        );
+        
+        List<String> playlist = apiService.getPlaylistByCity(city);
+        
+        if (playlist.size() > 1) {
+            return new ResponseEntity<>(playlist, HttpStatus.OK);
+        }
+    
+        if (playlist.get(0).contains("404")) {
+            // Error 404 Not Found
+            return new ResponseEntity<>(playlist, HttpStatus.NOT_FOUND);
+        } else if (playlist.get(0).contains("500")) {
+            // Error 500 Internal Server Error
+            return new ResponseEntity<>(playlist, HttpStatus.INTERNAL_SERVER_ERROR);
+        } else {
+            // Error 400 Bad Request
+            return new ResponseEntity<>(playlist, HttpStatus.BAD_REQUEST);
+        }
+        
     }
 
     @Operation(summary = "Get a playlist suggestion based on coordinates",
@@ -67,9 +80,23 @@ public class ApiController {
     })
     @GetMapping("/playlist/coordinates")
     public ResponseEntity<List<String>> getPlaylistByCoordinates(@RequestParam double lat, @RequestParam double lon){
-        List<String> playlist = new ArrayList<String>();
-        return new ResponseEntity<>(playlist,
-            HttpStatus.OK
-        );
+        
+        List<String> playlist = apiService.getPlaylistByCoordinates(lat, lon);
+
+        if (playlist.size() > 1) {
+            return new ResponseEntity<>(playlist, HttpStatus.OK);
+        }
+    
+        if (playlist.get(0).contains("404")) {
+            // Error 404 Not Found
+            return new ResponseEntity<>(playlist, HttpStatus.NOT_FOUND);
+        } else if (playlist.get(0).contains("500")) {
+            // Error 500 Internal Server Error
+            return new ResponseEntity<>(playlist, HttpStatus.INTERNAL_SERVER_ERROR);
+        } else {
+            // Error 400 Bad Request
+            return new ResponseEntity<>(playlist, HttpStatus.BAD_REQUEST);
+        }
+
     }
 }
