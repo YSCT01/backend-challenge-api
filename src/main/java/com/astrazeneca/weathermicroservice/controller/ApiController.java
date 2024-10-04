@@ -3,6 +3,7 @@ package com.astrazeneca.weathermicroservice.controller;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,24 +46,25 @@ public class ApiController {
     })
     @GetMapping("/playlist/city")
     public ResponseEntity<List<String>> getPlaylistByCity(@RequestParam String city){
-        
-        List<String> playlist = apiService.getPlaylistByCity(city);
-        
-        if (playlist.size() > 1) {
+        try {
+            List<String> playlist = apiService.getPlaylistByCity(city);
             return new ResponseEntity<>(playlist, HttpStatus.OK);
+        } catch (RuntimeException e) {
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.add("response", e.getMessage());
+
+            if (e.getMessage().contains("404")) {
+                // 404 Not Found
+                return new ResponseEntity<>(headers, HttpStatus.NOT_FOUND);
+            } else if (e.getMessage().contains("500")) {
+                // 500 Internal Server Error
+                return new ResponseEntity<>(headers, HttpStatus.INTERNAL_SERVER_ERROR);
+            } else {
+                // 400 Bad Request
+                return new ResponseEntity<>(headers, HttpStatus.BAD_REQUEST);
+            }
         }
-    
-        if (playlist.get(0).contains("404")) {
-            // Error 404 Not Found
-            return new ResponseEntity<>(playlist, HttpStatus.NOT_FOUND);
-        } else if (playlist.get(0).contains("500")) {
-            // Error 500 Internal Server Error
-            return new ResponseEntity<>(playlist, HttpStatus.INTERNAL_SERVER_ERROR);
-        } else {
-            // Error 400 Bad Request
-            return new ResponseEntity<>(playlist, HttpStatus.BAD_REQUEST);
-        }
-        
     }
 
     @Operation(summary = "Get a playlist suggestion based on coordinates",
@@ -80,23 +82,24 @@ public class ApiController {
     })
     @GetMapping("/playlist/coordinates")
     public ResponseEntity<List<String>> getPlaylistByCoordinates(@RequestParam double lat, @RequestParam double lon){
-        
-        List<String> playlist = apiService.getPlaylistByCoordinates(lat, lon);
-
-        if (playlist.size() > 1) {
+        try {
+            List<String> playlist = apiService.getPlaylistByCoordinates(lat, lon);
             return new ResponseEntity<>(playlist, HttpStatus.OK);
-        }
-    
-        if (playlist.get(0).contains("404")) {
-            // Error 404 Not Found
-            return new ResponseEntity<>(playlist, HttpStatus.NOT_FOUND);
-        } else if (playlist.get(0).contains("500")) {
-            // Error 500 Internal Server Error
-            return new ResponseEntity<>(playlist, HttpStatus.INTERNAL_SERVER_ERROR);
-        } else {
-            // Error 400 Bad Request
-            return new ResponseEntity<>(playlist, HttpStatus.BAD_REQUEST);
-        }
+        } catch (RuntimeException e) {
 
+            HttpHeaders headers = new HttpHeaders();
+            headers.add("response", e.getMessage());
+
+            if (e.getMessage().contains("404")) {
+                // 404 Not Found
+                return new ResponseEntity<>(headers, HttpStatus.NOT_FOUND);
+            } else if (e.getMessage().contains("500")) {
+                // 500 Internal Server Error
+                return new ResponseEntity<>(headers, HttpStatus.INTERNAL_SERVER_ERROR);
+            } else {
+                // 400 Bad Request 
+                return new ResponseEntity<>(headers, HttpStatus.BAD_REQUEST);
+            }
+        }
     }
 }

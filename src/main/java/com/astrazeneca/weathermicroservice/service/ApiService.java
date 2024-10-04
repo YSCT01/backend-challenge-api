@@ -1,6 +1,5 @@
 package com.astrazeneca.weathermicroservice.service;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -16,8 +15,6 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-
-import com.astrazeneca.weathermicroservice.model.RequestDone;
 
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -37,15 +34,14 @@ public class ApiService {
     private String spotifyApiSecret;
 
     private final WebClient webClient;
-    private RequestDoneService requestDoneService; 
 
     @Autowired
+    private RequestDoneService requestDoneService; 
+
     public ApiService(WebClient.Builder webClientBuilder) {
         this.webClient = webClientBuilder.build();
-        this.requestDoneService = requestDoneService;
     }
 
-    // Circuit Breaker and Retry for Weather service
     @CircuitBreaker(name = "weatherService", fallbackMethod = "weatherServiceFallback")
     @Retry(name = "weatherService")
     public List<String> getPlaylistByCity(String city){
@@ -53,6 +49,7 @@ public class ApiService {
             String weatherUrl = String.format("http://api.openweathermap.org/data/2.5/weather?q=%s&appid=%s&units=metric", city, this.openWeatherApiKey);
 
             // API call to OpenWeather
+            @SuppressWarnings("unchecked")
             Map<String, Object> weatherData = webClient.get()
                     .uri(weatherUrl)
                     .retrieve()
@@ -61,15 +58,12 @@ public class ApiService {
 
             double temperature = getTemperature(weatherData);
             List<String> playlist = getPlaylist(temperature);
-            persistRequest(city, temperature, playlist);
+            requestDoneService.saveRequest(city, temperature, playlist);
             return playlist;
 
         } catch (Exception e) {
             logger.error("Error fetching weather data from OpenWeather API for city: {}. Error: {}", city, e.getMessage());
-            List<String> error = new ArrayList<>();
-            error.add(0, e.getMessage());
-            // throw new Exception(e.getMessage());
-            return error;
+            throw new RuntimeException(e.getMessage());
             
         }
     }
@@ -81,6 +75,7 @@ public class ApiService {
             String weatherUrl = String.format("http://api.openweathermap.org/data/2.5/weather?lat=%s&lon=%s&appid=%s&units=metric", lat, lon, this.openWeatherApiKey);
 
             // API call to OpenWeather
+            @SuppressWarnings("unchecked")
             Map<String, Object> weatherData = webClient.get()
                     .uri(weatherUrl)
                     .retrieve()
@@ -89,30 +84,28 @@ public class ApiService {
 
             double temperature = getTemperature(weatherData);
             List<String> playlist = getPlaylist(temperature);
-            persistRequest("Lat: " + lat + ", Lon: " + lon, temperature, playlist);
+            requestDoneService.saveRequest("Lat: " + lat + ", Lon: " + lon, temperature, playlist);
             return playlist;
 
         } catch (Exception e) {
             logger.error("Error fetching weather data from OpenWeather API for coordinates: {}, {}. Error: {}", lat, lon, e.getMessage());
-            List<String> error = new ArrayList<>();
-            error.add(0, e.getMessage());
-            // throw new Exception(e.getMessage());
-            return error;
+            throw new RuntimeException(e.getMessage());
         }
     }
 
     @CircuitBreaker(name = "spotifyService", fallbackMethod = "spotifyServiceFallback")
     @Retry(name = "spotifyService")
     private List<String> getPlaylist(double temperature) {
+        int limit = 10;
         try {
             if (temperature > 30) {
-                return getPlaylistSongs("party");
+                return getPlaylistSongs("party", limit);
             } else if (temperature >= 15 && temperature <= 30) {
-                return getPlaylistSongs("pop");
+                return getPlaylistSongs("pop", limit);
             } else if (temperature >= 10 && temperature < 15) {
-                return getPlaylistSongs("rock");
+                return getPlaylistSongs("rock", limit);
             } else {
-                return getPlaylistSongs("classical");
+                return getPlaylistSongs("classical", limit);
             }
         } catch (Exception e) {
             logger.error("Error fetching playlist for temperature: {}. Error: {}", temperature, e.getMessage());
@@ -122,12 +115,13 @@ public class ApiService {
 
     @CircuitBreaker(name = "spotifyService", fallbackMethod = "spotifyServiceFallback")
     @Retry(name = "spotifyService")
-    private List<String> getPlaylistSongs(String genre) {
+    private List<String> getPlaylistSongs(String genre, int limit) {
         try {
             String accessToken = getSpotifyAccessToken();
-            String spotifyUrl = String.format("https://api.spotify.com/v1/search?q=%s&type=track&limit=10", genre);
+            String spotifyUrl = String.format("https://api.spotify.com/v1/search?q=%s&type=track&limit=%s", genre, limit);
 
             // API call to Spotify
+            @SuppressWarnings("unchecked")
             Map<String, Object> songsData = webClient.get()
                     .uri(spotifyUrl)
                     .header("Authorization", "Bearer " + accessToken)
@@ -144,8 +138,8 @@ public class ApiService {
     }
 
     // Helper methods
-
     private double getTemperature(Map<String, Object> weatherData) {
+        @SuppressWarnings("unchecked")
         Map<String, Object> main = (Map<String, Object>) weatherData.get("main");
         return (double) main.get("temp");
     }
@@ -153,7 +147,9 @@ public class ApiService {
     private List<String> getSongs(Map<String, Object> songsData) {
         List<String> songNames = new ArrayList<>();
 
+        @SuppressWarnings("unchecked")
         Map<String, Object> tracks = (Map<String, Object>) songsData.get("tracks");
+        @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) tracks.get("items");
 
         for (Map<String, Object> item : items) {
@@ -177,6 +173,7 @@ public class ApiService {
             formData.add("grant_type", "client_credentials");
 
             // API call to Spotify token service
+            @SuppressWarnings("unchecked")
             Map<String, Object> response = webClient.post()
                     .uri(spotifyTokenUrl)
                     .header("Authorization", "Basic " + encodedCredentials)
@@ -196,30 +193,19 @@ public class ApiService {
 
     // Fallback methods
 
-    public List<String> weatherServiceFallback(String city, Throwable t) {
+    public List<String> cityServiceFallback(String city, Throwable t) throws Exception{
         logger.error("Fallback triggered for weather service. Error: {}", t.getMessage());
-        return new ArrayList<>();
+        throw new Exception(t.getMessage());
     }
 
-    public List<String> weatherServiceFallback(double lat, double lon, Throwable t) {
+    public List<String> coordinatesServiceFallback(double lat, double lon, Throwable t) throws Exception{
         logger.error("Fallback triggered for weather service. Error: {}", t.getMessage());
-        return new ArrayList<>();
+        throw new Exception(t.getMessage());
     }
 
-    public List<String> spotifyServiceFallback(String genre, Throwable t) {
+    public List<String> spotifyServiceFallback(String genre, Throwable t) throws Exception{
         logger.error("Fallback triggered for Spotify service. Error: {}", t.getMessage());
-        return new ArrayList<>();
-    }
-
-    //RequestDoneService
-    public void persistRequest(String cityName, double temperature, List<String> playlist) {
-        RequestDone requestDone = new RequestDone();
-        requestDone.setCityName(cityName);
-        requestDone.setTemperature(temperature);
-        requestDone.setTime(LocalDateTime.now());
-        requestDone.setPlaylist(playlist);
-
-        requestDoneService.saveRequest(requestDone);  
+        throw new Exception(t.getMessage());
     }
 }
 
