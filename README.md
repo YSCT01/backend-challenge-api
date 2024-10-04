@@ -32,8 +32,10 @@ The project follows a **microservice architecture** with RESTful endpoints. It u
 │   │   │   │   │   └── ApiController.java    // REST Controller
 │   │   │   │   ├── service
 │   │   │   │   │   └── ApiService.java       // Services
+│   │   │   │   │   └── RequestDoneService.java       // Services
 │   │   │   │   ├── model
 │   │   │   │   │   └── RequestDone.java      // Model
+│   │   │   │   │   └── RequestDoneRepository.java      // Model
 │   └── test                                      // Unit tests
 ├── pom.xml                                       // Maven configuration
 └── README.md                                     // Project documentation
@@ -99,7 +101,7 @@ mvn spring-boot:run
 
 ### 2. Access the microservice
 
-Once the service is running, you can access the endpoints via `http://localhost:8080`.
+Once the service is running, you can access the endpoints via `http://localhost:8080/api/weather`.
 
 #### Example endpoint:
 
