@@ -6,6 +6,8 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -22,6 +24,8 @@ import io.github.resilience4j.retry.annotation.Retry;
 
 @Service
 public class ApiService {
+
+    private static final Logger logger = LoggerFactory.getLogger(ApiService.class);
 
     @Value("${openwheater-api-key}")
     private String openWeatherApiKey;
@@ -41,121 +45,170 @@ public class ApiService {
         this.requestDoneService = requestDoneService;
     }
 
-    //Weather & Spotify services
-    //Weather
-    @CircuitBreaker(name = "apiService", fallbackMethod = "getFallbackPlaylistByCity")
-    @Retry(name = "apiService")
-    public List<String> getPlaylistByCity(String city) {
-        String weatherUrl = String.format("http://api.openweathermap.org/data/2.5/weather?q=%s&appid=%s&units=metric", city, this.openWeatherApiKey);
+    // Circuit Breaker and Retry for Weather service
+    @CircuitBreaker(name = "weatherService", fallbackMethod = "weatherServiceFallback")
+    @Retry(name = "weatherService")
+    public List<String> getPlaylistByCity(String city){
+        try {
+            String weatherUrl = String.format("http://api.openweathermap.org/data/2.5/weather?q=%s&appid=%s&units=metric", city, this.openWeatherApiKey);
 
-        //API call
-        Map<String, Object> weatherData = webClient.get()
-            .uri(weatherUrl)
-            .retrieve()
-            .bodyToFlux(Map.class)
-            .blockFirst();
+            // API call to OpenWeather
+            Map<String, Object> weatherData = webClient.get()
+                    .uri(weatherUrl)
+                    .retrieve()
+                    .bodyToFlux(Map.class)
+                    .blockFirst();
 
-        double temperature = getTemperature(weatherData);
-        List<String> playlist = getPlaylist(temperature);
+            double temperature = getTemperature(weatherData);
+            List<String> playlist = getPlaylist(temperature);
+            persistRequest(city, temperature, playlist);
+            return playlist;
 
-        persistRequest(city, temperature, playlist);
-
-        return playlist;
+        } catch (Exception e) {
+            logger.error("Error fetching weather data from OpenWeather API for city: {}. Error: {}", city, e.getMessage());
+            List<String> error = new ArrayList<>();
+            error.add(0, e.getMessage());
+            // throw new Exception(e.getMessage());
+            return error;
+            
+        }
     }
 
-    @CircuitBreaker(name = "apiService", fallbackMethod = "getFallbackPlaylistByCoordinates")
-    @Retry(name = "apiService")
+    @CircuitBreaker(name = "weatherService", fallbackMethod = "weatherServiceFallback")
+    @Retry(name = "weatherService")
     public List<String> getPlaylistByCoordinates(double lat, double lon) {
-        String weatherUrl = String.format("http://api.openweathermap.org/data/2.5/weather?lat=%s&lon=%s&appid=%s&units=metric", lat, lon, this.openWeatherApiKey);
+        try {
+            String weatherUrl = String.format("http://api.openweathermap.org/data/2.5/weather?lat=%s&lon=%s&appid=%s&units=metric", lat, lon, this.openWeatherApiKey);
 
-        //API call
-        Map<String, Object> weatherData = webClient.get()
-            .uri(weatherUrl)
-            .retrieve()
-            .bodyToFlux(Map.class)
-            .blockFirst();
+            // API call to OpenWeather
+            Map<String, Object> weatherData = webClient.get()
+                    .uri(weatherUrl)
+                    .retrieve()
+                    .bodyToFlux(Map.class)
+                    .blockFirst();
 
-        double temperature = getTemperature(weatherData);
-        List<String> playlist = getPlaylist(temperature);
-        
-        persistRequest("Lat: " + lat + ", Lon: " + lon, temperature, playlist);
+            double temperature = getTemperature(weatherData);
+            List<String> playlist = getPlaylist(temperature);
+            persistRequest("Lat: " + lat + ", Lon: " + lon, temperature, playlist);
+            return playlist;
 
-        return playlist;
+        } catch (Exception e) {
+            logger.error("Error fetching weather data from OpenWeather API for coordinates: {}, {}. Error: {}", lat, lon, e.getMessage());
+            List<String> error = new ArrayList<>();
+            error.add(0, e.getMessage());
+            // throw new Exception(e.getMessage());
+            return error;
+        }
     }
 
-    //Fallback methods
-    public List<String> getFallbackPlaylistByCity(String city, Throwable t) {
-        // Código de respuesta de emergencia (Fallback)
-        return List.of("Fallback song 1", "Fallback song 2");
+    @CircuitBreaker(name = "spotifyService", fallbackMethod = "spotifyServiceFallback")
+    @Retry(name = "spotifyService")
+    private List<String> getPlaylist(double temperature) {
+        try {
+            if (temperature > 30) {
+                return getPlaylistSongs("party");
+            } else if (temperature >= 15 && temperature <= 30) {
+                return getPlaylistSongs("pop");
+            } else if (temperature >= 10 && temperature < 15) {
+                return getPlaylistSongs("rock");
+            } else {
+                return getPlaylistSongs("classical");
+            }
+        } catch (Exception e) {
+            logger.error("Error fetching playlist for temperature: {}. Error: {}", temperature, e.getMessage());
+            throw new RuntimeException("Spotify service is unavailable at the moment");
+        }
     }
 
-    public List<String> getFallbackPlaylistByCoordinates(double lat, double lon, Throwable t) {
-        // Código de respuesta de emergencia (Fallback)
-        return List.of("Fallback song 1", "Fallback song 2");
+    @CircuitBreaker(name = "spotifyService", fallbackMethod = "spotifyServiceFallback")
+    @Retry(name = "spotifyService")
+    private List<String> getPlaylistSongs(String genre) {
+        try {
+            String accessToken = getSpotifyAccessToken();
+            String spotifyUrl = String.format("https://api.spotify.com/v1/search?q=%s&type=track&limit=10", genre);
+
+            // API call to Spotify
+            Map<String, Object> songsData = webClient.get()
+                    .uri(spotifyUrl)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .bodyToFlux(Map.class)
+                    .blockFirst();
+
+            return getSongs(songsData);
+
+        } catch (Exception e) {
+            logger.error("Error fetching playlist from Spotify API for genre: {}. Error: {}", genre, e.getMessage());
+            throw new RuntimeException("Spotify service is unavailable at the moment");
+        }
     }
+
+    // Helper methods
 
     private double getTemperature(Map<String, Object> weatherData) {
         Map<String, Object> main = (Map<String, Object>) weatherData.get("main");
         return (double) main.get("temp");
     }
 
-    private List<String> getPlaylist(double temperature){
-        if (temperature > 30) {
-            return getPlaylistSongs("party");
-        } else if (temperature >= 15 && temperature <= 30) {
-            return getPlaylistSongs("pop");
-        } else if (temperature >= 10 && temperature < 15) {
-            return getPlaylistSongs("rock");
-        } else {
-            return getPlaylistSongs("classical");
-        }
-    }
+    private List<String> getSongs(Map<String, Object> songsData) {
+        List<String> songNames = new ArrayList<>();
 
-    private List<String> getPlaylistSongs(String genre){
-        String accessToken = getSpotifyAccessToken();
-        String spotifyUrl = String.format("https://api.spotify.com/v1/search?q=%s&type=track&limit=10", genre);
-
-        Map<String, Object> songsData = webClient.get()
-                .uri(spotifyUrl)
-                .header("Authorization", "Bearer " + accessToken)
-                .retrieve()
-                .bodyToFlux(Map.class)
-                .blockFirst();
-
-        return getSongs(songsData);
-    }
-
-    private List<String> getSongs(Map<String, Object> songsData){
-        List<String> songsNames = new ArrayList<>();
         Map<String, Object> tracks = (Map<String, Object>) songsData.get("tracks");
         List<Map<String, Object>> items = (List<Map<String, Object>>) tracks.get("items");
 
         for (Map<String, Object> item : items) {
-            songsNames.add((String) item.get("name"));
+            songNames.add((String) item.get("name"));
         }
 
-        return songsNames;
+        return songNames;
     }
 
+    // Spotify token fetching with error handling
+    @CircuitBreaker(name = "spotifyService", fallbackMethod = "spotifyServiceFallback")
+    @Retry(name = "spotifyService")
     private String getSpotifyAccessToken() {
-        String spotifyTokenUrl = "https://accounts.spotify.com/api/token";
-    
-        String credentials = this.spotifyApiKey + ":" + this.spotifyApiSecret;
-        String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
+        try {
+            String spotifyTokenUrl = "https://accounts.spotify.com/api/token";
 
-        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
-        formData.add("grant_type", "client_credentials");
+            String credentials = this.spotifyApiKey + ":" + this.spotifyApiSecret;
+            String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
 
-        Map<String, Object> response = webClient.post()
-                .uri(spotifyTokenUrl)
-                .header("Authorization", "Basic " + encodedCredentials)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(BodyInserters.fromFormData(formData))
-                .retrieve()
-                .bodyToMono(Map.class)
-                .block();
+            MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+            formData.add("grant_type", "client_credentials");
 
-        return (String) response.get("access_token");
+            // API call to Spotify token service
+            Map<String, Object> response = webClient.post()
+                    .uri(spotifyTokenUrl)
+                    .header("Authorization", "Basic " + encodedCredentials)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(BodyInserters.fromFormData(formData))
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+            return (String) response.get("access_token");
+
+        } catch (Exception e) {
+            logger.error("Error fetching Spotify access token. Error: {}", e.getMessage());
+            throw new RuntimeException("Spotify authentication service is unavailable at the moment");
+        }
+    }
+
+    // Fallback methods
+
+    public List<String> weatherServiceFallback(String city, Throwable t) {
+        logger.error("Fallback triggered for weather service. Error: {}", t.getMessage());
+        return new ArrayList<>();
+    }
+
+    public List<String> weatherServiceFallback(double lat, double lon, Throwable t) {
+        logger.error("Fallback triggered for weather service. Error: {}", t.getMessage());
+        return new ArrayList<>();
+    }
+
+    public List<String> spotifyServiceFallback(String genre, Throwable t) {
+        logger.error("Fallback triggered for Spotify service. Error: {}", t.getMessage());
+        return new ArrayList<>();
     }
 
     //RequestDoneService
@@ -165,8 +218,9 @@ public class ApiService {
         requestDone.setTemperature(temperature);
         requestDone.setTime(LocalDateTime.now());
         requestDone.setPlaylist(playlist);
-        requestDone.setCount(1);
 
         requestDoneService.saveRequest(requestDone);  
     }
 }
+
+
